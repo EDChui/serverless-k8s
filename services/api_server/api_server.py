@@ -1,16 +1,27 @@
 from flask import Flask, request, jsonify
 import etcd3
+import os
+
+dirname = os.path.dirname(__file__)
+ca_cert = os.path.join(dirname, 'certs/ca.crt')
+cert_cert = os.path.join(dirname, 'certs/client.crt')
+cert_key = os.path.join(dirname, 'certs/client.key')
 
 # Initialize Flask App
 app = Flask(__name__)
 
 # Initialize etcd3 Client
 etcd = etcd3.client(
-    endpoints=["https://<etcd-endpoint>:2379"],
-    ca_cert="/path/to/ca.crt",
-    cert_cert="/path/to/client.crt",
-    cert_key="/path/to/client.key"
+    host="https://127.0.0.1",
+    port=2379,
+    ca_cert=ca_cert,
+    cert_cert=cert_cert,
+    cert_key=cert_key
 )
+
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({"status": "API is running"}), 200
 
 @app.route('/api/v1/<resource>', methods=['POST'])
 def create_resource(resource):
