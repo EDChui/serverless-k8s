@@ -167,3 +167,6 @@ default.etcd/
 
 # Certificates
 **/certs/
+
+# kourier.yaml
+kourier.yaml
