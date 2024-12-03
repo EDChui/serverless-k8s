@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 # Initialize etcd3 Client
 etcd = etcd3.client(
-    host="https://127.0.0.1",
+    host="127.0.0.1",
     port=2379,
     ca_cert=ca_cert,
     cert_cert=cert_cert,

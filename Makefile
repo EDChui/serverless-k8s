@@ -29,8 +29,11 @@ build-deploy-api-server:
 # kubectl get pods -n knative-serving
 
 # Copy
-# docker cp knative-control-plane:/etc/kubernetes/pki/ca.crt ./Documents/ca.crt
+# docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt ./Documents/ca.crt
 # docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt ./Documents/client.crt
 # docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key ./Documents/client.key
 
-# curl -v https://127.0.0.1:2379 --cacert /etc/kubernetes/pki/ca.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cert /etc/kubernetes/pki/apiserver-etcd-client.crt 
+# ls /etc/kubernetes/pki
+
+# curl -v 172.18.0.2:2379 --cacert /etc/kubernetes/pki/ca.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cert /etc/kubernetes/pki/apiserver-etcd-client.crt 
+# curl -v 172.18.0.2:2379 --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key
