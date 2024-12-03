@@ -8,7 +8,7 @@ build-push:
 	done
 
 build-deploy-api-server:
-	cd ./services/api_server && docker build -t ${NAMESPACE}/serverless-k8s:latest . && docker push ${NAMESPACE}/serverless-k8s:latest && kubectl delete ksvc api-server && kubectl apply -f api_server.yaml;
+	@cd ./services/api_server && docker build -t ${NAMESPACE}/serverless-k8s:latest . && docker push ${NAMESPACE}/serverless-k8s:latest && kubectl delete ksvc api-server && kubectl apply -f api_server.yaml;
 
 # kubectl get ksvc api-server  --output=custom-columns=NAME:.metadata.name,DOMAIN:.status.domain
 
@@ -33,7 +33,4 @@ build-deploy-api-server:
 # docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt ./Documents/client.crt
 # docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key ./Documents/client.key
 
-curl -v https://127.0.0.1:2379 \
-	--cacert /etc/kubernetes/pki/ca.crt \
-	--cert /etc/kubernetes/pki/apiserver-etcd-client.crt \ 
-	--key /etc/kubernetes/pki/apiserver-etcd-client.key
+# curl -v https://127.0.0.1:2379 --cacert /etc/kubernetes/pki/ca.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cert /etc/kubernetes/pki/apiserver-etcd-client.crt 
