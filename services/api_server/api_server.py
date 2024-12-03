@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import etcd3
 import os
+import json
 
 dirname = os.path.dirname(__file__)
 ca_cert = os.path.join(dirname, 'certs/ca.crt')
@@ -34,7 +35,7 @@ def create_resource(resource):
     namespace = data.get("metadata", {}).get("namespace", "default")
     etcd_key = f"/registry/{resource}/{namespace}/{resource_name}"
 
-    etcd.put(etcd_key, jsonify(data))
+    etcd.put(etcd_key, json.dumps(data))
     return jsonify({"message": f"{resource.capitalize()} '{resource_name}' created successfully"}), 201
 
 @app.route('/api/v1/<resource>/<name>', methods=['GET'])
