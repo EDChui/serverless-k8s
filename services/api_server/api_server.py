@@ -69,7 +69,7 @@ def list_resources(resource):
 
         resources = []
         for value, metadata in etcd.get_prefix(prefix):
-            resources.append(value.decode())
+            resources.append(metadata.key.decode())
 
         return jsonify({"data": resources}), 200
     
