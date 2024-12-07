@@ -27,11 +27,15 @@ build-deploy-scheduler:
 # kubectl get pods
 # kubectl logs <pods-name>
 
-# nstall Knative and Kubernetes using kind, can delete and recreate
+# Install Knative and Kubernetes using kind, can delete and recreate
 # kn quickstart kind
 
 # Verify Installation
 # kubectl get pods -n knative-serving
+
+# sh
+# docker exec -it knative-control-plane sh
+# cat /etc/kubernetes/manifests/etcd.yaml
 
 # Copy
 # docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt ./Documents/ca.crt
