@@ -1,6 +1,5 @@
 NAMESPACE=raptorchoinl
 PROJECT=serverless-k8s
-#ghcr.io/${PROJECT}/$$name:latest
 
 build-push:
 	@for name in $(shell ls services) ; do \
@@ -8,7 +7,10 @@ build-push:
 	done
 
 build-deploy-api-server:
-	@cd ./services/api_server && docker build -t ${NAMESPACE}/serverless-k8s:latest . && docker push ${NAMESPACE}/serverless-k8s:latest && kubectl delete ksvc api-server && kubectl apply -f api_server.yaml;
+	@cd ./services/api_server && docker build -t ${NAMESPACE}/serverless-k8s-api-server:latest . && docker push ${NAMESPACE}/serverless-k8s-api-server:latest && kubectl delete ksvc api-server && kubectl apply -f api_server.yaml;
+
+build-deploy-scheduler:
+	@cd ./services/scheduler && docker build -t ${NAMESPACE}/serverless-k8s-scheduler:latest . && docker push ${NAMESPACE}/serverless-k8s-scheduler:latest && kubectl delete ksvc knative-scheduler && kubectl apply -f scheduler.yaml;
 
 # kubectl get ksvc api-server  --output=custom-columns=NAME:.metadata.name,DOMAIN:.status.domain
 
@@ -19,11 +21,14 @@ build-deploy-api-server:
 # kubectl get ksvc
 
 # Delete Knative Services
-# kubectl delete ksvc api_server
+# kubectl delete ksvc api-server
 
 # Get Pods Logging
 # kubectl get pods
 # kubectl logs <pods-name>
+
+# nstall Knative and Kubernetes using kind, can delete and recreate
+# kn quickstart kind
 
 # Verify Installation
 # kubectl get pods -n knative-serving
