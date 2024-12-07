@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import etcd3
 import os
 import json
+import traceback
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -39,8 +40,8 @@ def create_resource(resource):
         etcd.put(etcd_key, json.dumps(data))
         return jsonify({"message": f"{resource.capitalize()} '{resource_name}' created successfully"}), 201
     except Exception as error:
-        print("Error occurs: ", error)
-        return jsonify({"error": "Error occurs"}), 500  
+        traceback.print_exc()
+        return jsonify({"error": "Internal System Error"}), 500  
 
 @app.route('/api/v1/<resource>/<name>', methods=['GET'])
 def get_resource(resource, name):
@@ -56,8 +57,8 @@ def get_resource(resource, name):
             return jsonify({"error": f"{resource.capitalize()} '{name}' not found"}), 404
         
     except Exception as error:
-        print("Error occurs: ", error)
-        return jsonify({"error": "Error occurs"}), 500
+        traceback.print_exc()
+        return jsonify({"error": "Internal System Error"}), 500
 
 @app.route('/api/v1/<resource>', methods=['GET'])
 def list_resources(resource):
@@ -73,8 +74,8 @@ def list_resources(resource):
         return jsonify({"data": resources}), 200
     
     except Exception as error:
-        print("Error occurs: ", error)
-        return jsonify({"error": "Error occurs"}), 500
+        traceback.print_exc()
+        return jsonify({"error": "Internal System Error"}), 500
 
 @app.route('/api/v1/<resource>/<name>', methods=['DELETE'])
 def delete_resource(resource, name):
@@ -89,8 +90,8 @@ def delete_resource(resource, name):
         else:
             return jsonify({"error": f"{resource.capitalize()} '{name}' not found"}), 404
     except Exception as error:
-        print("Error occurs: ", error)
-        return jsonify({"error": "Error occurs"}), 500
+        traceback.print_exc()
+        return jsonify({"error": "Internal System Error"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

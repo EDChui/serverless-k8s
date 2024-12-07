@@ -139,7 +139,7 @@ def schedule_pods():
 
     except Exception as error:
         traceback.print_exc()
-        return jsonify({"error": "Error occurs"}), 500
+        return jsonify({"error": "Internal System Error"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8081)
