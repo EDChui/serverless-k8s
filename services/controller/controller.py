@@ -48,91 +48,157 @@ def health_check():
 @app.route('/reconcile', methods=['POST'])
 def reconcile():
     """
-    The controller watches etcd for changes and ensures the desired state is maintained.
-    This endpoint can be called periodically (via a cron job or similar).
+    The controller listens for reconciliation requests and performs actions
+    like scaling, pod scheduling, or resource management.
     """
     try:
-        # Step 1: Watch for Pods in the "Pending" state (no nodeName assigned)
-        pending_pods = get_pending_pods()
+        resource_type = request.json.get("resource_type")
+        resource_name = request.json.get("resource_name")
+        namespace = request.json.get("namespace", "default")
 
-        if not pending_pods:
-            return jsonify({"message": "No pending Pods to reconcile"}), 200
-
-        results = []
-        for pod_key, pod_dict in pending_pods:
-            # Step 2: Trigger scheduling for each pending Pod
-            scheduling_response = trigger_scheduler(pod_key)
-
-            if scheduling_response.get("status") == "success":
-                results.append({
-                    "pod_key": pod_key,
-                    "assigned_node": scheduling_response["assigned_node"]
-                })
-            else:
-                results.append({
-                    "pod_key": pod_key,
-                    "error": "Failed to schedule Pod"
-                })
-
-        return jsonify({"message": "Reconciliation completed", "results": results}), 200
-
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": "Internal System Error"}), 500
-
-@app.route('/scale-replicaset', methods=['POST'])
-def scale_replicaset():
-    """
-    Scale a ReplicaSet by ensuring it has the desired number of Pods.
-    This will watch etcd for ReplicaSets and scale them based on the desired state.
-    """
-    try:
-        data = request.json
-        replicaset_name = data.get("name")
-        namespace = data.get("namespace", "default")
-        desired_replicas = data.get("desired_replicas", 1)
-
-        # Step 4: Check current state of the ReplicaSet in etcd
-        replicaset_key = f"/registry/replicasets/{namespace}/{replicaset_name}"
-        value, _ = etcd.get(replicaset_key)
-
+        # Fetch resource details dynamically from etcd based on type
+        resource_key = f"/registry/{resource_type}/{namespace}/{resource_name}"
+        value, _ = etcd.get(resource_key)
+        
         if not value:
-            return jsonify({"error": "ReplicaSet not found"}), 404
+            return jsonify({"error": f"{resource_type.capitalize()} '{resource_name}' not found in etcd"}), 404
 
-        replicaset = json.loads(value.decode('utf-8'))
-        current_replicas = len([pod for pod in replicaset["status"]["pods"]])
+        resource_data = detect_and_parse(value)
 
-        # Step 5: Scale the ReplicaSet by adding or removing Pods
-        if current_replicas < desired_replicas:
-            for _ in range(desired_replicas - current_replicas):
-                # Create and schedule new Pods for the ReplicaSet
-                pod_key = create_pod_for_replicaset(replicaset_name, namespace)
-                trigger_scheduler(pod_key)
+        # Perform reconciliation (scale, create, or update resources)
+        if resource_type == "replicasets":
+            scale_replicaset(resource_data, namespace)
+        elif resource_type == "deployments":
+            handle_deployment(resource_data, namespace)
+        elif resource_type == "pods":
+            handle_pod(resource_data, namespace)
+        else:
+            return jsonify({"error": f"Unsupported resource type '{resource_type}'"}), 400
 
-        return jsonify({
-            "message": f"ReplicaSet '{replicaset_name}' scaled to {desired_replicas} Pods"
-        }), 200
+        return jsonify({"message": f"Resource {resource_name} reconciled successfully"}), 200
 
     except Exception as e:
-        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+def scale_replicaset(replicaset, namespace):
+    """
+    Scale the ReplicaSet to the desired number of replicas.
+    """
+    desired_replicas = replicaset["spec"]["replicas"]
+    current_pods = fetch_current_pods(namespace, replicaset["metadata"]["name"])
+
+    current_replicas = len(current_pods)
     
+    # Scale up if needed
+    if current_replicas < desired_replicas:
+        for _ in range(desired_replicas - current_replicas):
+            create_and_schedule_pod(namespace, replicaset)
+    # Optionally, scale down if needed (not implemented here)
+    elif current_replicas > desired_replicas:
+        for excess_pod in current_pods[:current_replicas - desired_replicas]:
+            delete_pod(excess_pod)
 
-def get_pending_pods():
+def handle_deployment(deployment, namespace):
     """
-    Fetch all Pods in the "Pending" state (no nodeName assigned).
+    Handle deployment operations like scaling or updating deployments.
     """
-    prefix = "/registry/pods/"
-    pending_pods = []
+    # Assume scaling logic or rollout logic for Deployments
+    scale_replicaset(deployment, namespace)  # Simplifying for this example
 
-    # Step 3: Query etcd for Pods in "Pending" state (i.e., no nodeName)
+def handle_pod(pod, namespace):
+    """
+    Handle Pod operations such as scheduling a pod if it's not scheduled yet.
+    """
+    if "nodeName" not in pod["spec"]:  # Check if pod is unscheduled
+        schedule_pod_on_node(pod, namespace)
+
+def fetch_current_pods(namespace, replicaset_name):
+    """
+    Fetch the current Pods managed by the ReplicaSet from etcd.
+    """
+    prefix = f"/registry/pods/{namespace}/"
+    pods = []
+
     for value, metadata in etcd.get_prefix(prefix):
         pod_key = metadata.key.decode()
-        pod_dict = fetch_pod(pod_key)
-        if pod_dict and not pod_dict.get("spec", {}).get("nodeName"):
-            pending_pods.append((pod_key, pod_dict))
+        pod_data = detect_and_parse(value)
+        if pod_data.get("metadata", {}).get("labels", {}).get("replicaset", "") == replicaset_name:
+            pods.append(pod_data)
+    
+    return pods
 
-    return pending_pods
+def create_and_schedule_pod(namespace, replicaset):
+    """
+    Dynamically create a Pod based on the ReplicaSet's spec and assign a node.
+    """
+    pod_name = f"{replicaset['metadata']['name']}-pod-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    pod_data = {
+        "metadata": {"name": pod_name, "namespace": namespace},
+        "spec": {
+            "containers": replicaset['spec']['template']['spec']['containers'],  # Using ReplicaSet's container spec
+            "nodeName": assign_node_to_pod()  # Assign the Pod to a node
+        }
+    }
+
+    # Create the Pod using API Server
+    response = requests.post(f"{API_SERVER_URL}/api/v1/pods", json=pod_data)
+    if response.status_code == 201:
+        return jsonify({
+            "message": f"Pod {pod_name} created and scheduled successfully",
+            "assigned_node": response["assigned_node"]
+        })
+    else:
+        return jsonify({"error": "Failed to create and schedule pod"}), 500
+
+def schedule_pod_on_node(pod, namespace):
+    """
+    Schedule the Pod on a node if it is not already scheduled.
+    This will trigger the Scheduler Knative Service to assign the Pod to a node.
+    """
+    # Check if the Pod already has a node assigned
+    if "nodeName" not in pod["spec"]:
+        # Call the Scheduler Service to assign a node
+        pod_key = pod["metadata"]["name"]
+        schedule_response = trigger_scheduler(pod_key)
+
+        if schedule_response.get("status") == "success":
+            # Update the Pod with the assigned node
+            pod["spec"]["nodeName"] = schedule_response["assigned_node"]
+            # Update the Pod in etcd
+            update_pod_in_etcd(pod_key, pod)
+
+def assign_node_to_pod():
+    """
+    Assign a node to a specific Pod (by pod_key) using round-robin scheduling.
+    """
+    global current_node_index
+    node_name = available_nodes[current_node_index]
+
+    # Round-robin scheduling
+    current_node_index = (current_node_index + 1) % len(available_nodes)
+
+    return node_name
+
+def update_pod_in_etcd(pod_key, pod):
+    """
+    Update the Pod in etcd with the assigned node.
+    """
+    serialized_pod = json.dumps(pod).encode("utf-8")
+    etcd.put(f"/registry/pods/default/{pod_key}", serialized_pod)
+
+def delete_pod(pod_data):
+    """
+    Delete a Pod from etcd by calling the API Server's DELETE API.
+    """
+    pod_key = pod_data["metadata"]["name"]
+    
+    # Call the API Server's DELETE API to delete the Pod
+    response = requests.delete(f"{API_SERVER_URL}/api/v1/pods/{pod_key}")
+    if response.status_code == 200:
+        return jsonify({"message": f"Pod {pod_key} deleted successfully"}), 200
+    else:
+        return jsonify({"error": f"Failed to delete Pod {pod_key}"}), 500
 
 def fetch_pod(key):
     """
