@@ -26,3 +26,7 @@ make update-namespace
 ```sh
 make get-etcd-certs
 ```
+
+# Acknowledgments
+
+This project makes use of Auger maintained by the etcd Development and Communities. Please check out their work [here (etcd-io/auger)](https://github.com/etcd-io/auger).
