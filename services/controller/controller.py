@@ -31,8 +31,8 @@ etcd = etcd3.client(
 )
 
 # Constant
-API_SERVER_URL = "http://api-server.default.127.0.0.1.sslip.io"
-SCHEDULER_URL = "http://knative-scheduler.default.127.0.0.1.sslip.io"
+API_SERVER_URL = "http://api-server.default.svc.cluster.local"
+SCHEDULER_URL = "http://knative-scheduler.default.svc.cluster.local"
 
 # Initialize available nodes (can be dynamically fetched)
 available_nodes = ["node1", "node2", "node3"]
@@ -134,6 +134,8 @@ def create_and_schedule_pod(namespace, replicaset):
     pod_name = f"{replicaset['metadata']['name']}-pod-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
     pod_data = {
+        "apiVersion": "v1",
+        "kind": "Pod",
         "metadata": {"name": pod_name, "namespace": namespace},
         "spec": {
             "containers": replicaset['spec']['template']['spec']['containers'],  # Using ReplicaSet's container spec

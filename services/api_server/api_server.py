@@ -7,14 +7,14 @@ import yaml
 import traceback
 import subprocess
 import requests
-import uuid
 from datetime import datetime
+import uuid
 
 # Initialize Flask App
 app = Flask(__name__)
 
 # Constant
-SCHEDULER_URL = "http://knative-scheduler.default.127.0.0.1.sslip.io"
+SCHEDULER_URL = "http://knative-scheduler.default.svc.cluster.local"
 
 # etcd Configuration
 ETCD_HOST = "172.18.0.2"
@@ -37,6 +37,14 @@ etcd = etcd3.client(
 
 @app.route('/', methods=['GET'])
 def health_check():
+    try:
+        response = requests.get(SCHEDULER_URL)
+        if response.status_code == 200:
+            return jsonify({"status": "API is running"}), 200
+        else:
+            return {"status": "Scheduler is not running"}, 200
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
     return jsonify({"status": "API is running"}), 200
 
 @app.route('/api/v1/<resource>', methods=['POST'])
@@ -47,14 +55,21 @@ def create_resource(resource):
         resource_name = data.get("metadata", {}).get("name", "")
         if not resource_name:
             return jsonify({"error": "Resource name is required"}), 400
-
+        
         namespace = data.get("metadata", {}).get("namespace", "default")
         etcd_key = f"/registry/{resource}/{namespace}/{resource_name}"
 
-        # Step 1: Store Pod in etcd
-        etcd.put(etcd_key, json.dumps(data))
+        # Step 1: Generate a UUID for the resource
+        resource_uid = create_uid()
 
-        # Step 2: Trigger the Scheduler to assign a node to the Pod
+        # Add the UUID to the metadata of the resource
+        data["metadata"]["uid"] = resource_uid
+
+        # Step 2: Encode the resource and store it in etcd
+        etcd_value = auger_encode(data)
+        etcd.put(etcd_key, etcd_value)
+
+        # Step 3: Trigger the Scheduler to assign a node to the resource
         scheduling_response = trigger_scheduler(etcd_key)
         
         if scheduling_response.get("status") == "success":
@@ -148,6 +163,22 @@ def get_resource_status(name):
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500
 
+@app.route('/api/v1/all', methods=['GET'])
+def list_all_resources():
+    """List all keys in the etcd."""
+    try:
+        prefix = f"/registry/"
+
+        resources = []
+        for value, metadata in etcd.get_prefix(prefix):
+            resources.append(metadata.key.decode())
+
+        return jsonify({"data": resources}), 200
+    
+    except Exception as error:
+        traceback.print_exc()
+        return jsonify({"error": "Internal System Error"}), 500
+
 @app.route('/api/v1/<resource>', methods=['GET'])
 def list_resources(resource):
     """List all resources of a type."""
@@ -180,6 +211,10 @@ def delete_resource(resource, name):
     except Exception as error:
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500
+
+def create_uid():
+    """Generate a unique UID for a resource."""
+    return str(uuid.uuid4())
 
 def trigger_scheduler(pod_key):
     """
@@ -227,6 +262,30 @@ def auger_decode(data):
         return process.stdout.decode('utf-8')
     except subprocess.CalledProcessError as e:
         print("Auger error:", e.stderr.decode('utf-8'))
+        return None
+
+def auger_encode(data_dict):
+    """
+    Encode a Python dictionary to Protobuf format using Auger.
+    The dictionary is first converted to YAML, then encoded to Protobuf.
+    """
+    try:
+        # Convert the dictionary to YAML format
+        yaml_data = yaml.dump(data_dict, default_flow_style=False)
+
+        # Use Auger to encode the YAML into Protobuf
+        process = subprocess.run(
+            ["./auger/build/auger", "encode"],
+            input=yaml_data.encode("utf-8"),  # Provide YAML as input
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+
+        # The output of the Auger process is the Protobuf encoded data
+        return process.stdout
+    except subprocess.CalledProcessError as e:
+        print("Auger encoding error:", e.stderr.decode('utf-8'))
         return None
 
 if __name__ == '__main__':

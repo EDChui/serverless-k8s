@@ -40,6 +40,15 @@ install-knative-dependencies:
   --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}';
 	@kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-default-domain.yaml;
 
+copy-certs-to-services:
+	@for name in $(shell ls services) ; do \
+		rm -rf ./services/$$name/certs && \
+		mkdir ./services/$$name/certs && \
+		docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt ./services/$$name/certs/ca.crt && \
+		docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt ./services/$$name/certs/client.crt && \
+		docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key ./services/$$name/certs/client.key; \
+	done
+
 # kubectl get ksvc api-server  --output=custom-columns=NAME:.metadata.name,DOMAIN:.status.domain
 
 # Deploy

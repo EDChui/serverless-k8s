@@ -28,10 +28,6 @@ etcd = etcd3.client(
     cert_key=cert_key
 )
 
-# List of available nodes (hardcoded for simplicity)
-available_nodes = ["node1", "node2", "node3"]
-current_node_index = 0
-
 @app.route('/', methods=['GET'])
 def health_check():
     """
@@ -118,16 +114,43 @@ def auger_decode(data):
     except subprocess.CalledProcessError as e:
         print("Auger error:", e.stderr.decode('utf-8'))
         return None
+    
+def auger_encode(data_dict):
+    """
+    Encode a Python dictionary to Protobuf format using Auger.
+    The dictionary is first converted to YAML, then encoded to Protobuf.
+    """
+    try:
+        # Convert the dictionary to YAML format
+        yaml_data = yaml.dump(data_dict, default_flow_style=False)
+
+        # Use Auger to encode the YAML into Protobuf
+        process = subprocess.run(
+            ["./auger/build/auger", "encode"],
+            input=yaml_data.encode("utf-8"),  # Provide YAML as input
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+
+        # The output of the Auger process is the Protobuf encoded data
+        return process.stdout
+    except subprocess.CalledProcessError as e:
+        print("Auger encoding error:", e.stderr.decode('utf-8'))
+        return None
 
 def assign_node_to_pod(pod_key, pod):
     """
     Assign a node to a specific Pod (by pod_key) and update it in etcd.
     """
-    global current_node_index
-    node_name = available_nodes[current_node_index]
+    # Fetch real available nodes from etcd dynamically
+    available_nodes = fetch_available_nodes_from_etcd()
+
+    if not available_nodes:
+        raise Exception("No available nodes found for scheduling.")
 
     # Round-robin scheduling (simple, could be expanded based on actual resource availability)
-    current_node_index = (current_node_index + 1) % len(available_nodes)
+    node_name = available_nodes[0]  # Just assign the first node for simplicity
 
     # Update the Pod's nodeName field
     pod["spec"]["nodeName"] = node_name
@@ -135,12 +158,30 @@ def assign_node_to_pod(pod_key, pod):
 
     return node_name
 
+def fetch_available_nodes_from_etcd():
+    """
+    Fetch the list of available nodes from etcd.
+    Assuming the nodes are stored in '/registry/nodes' in etcd.
+    """
+    available_nodes = []
+    for nodes_prefix in ['/registry/nodes/', '/registry/csinodes/', '/registry/minions/']:
+        try:
+            # Query etcd for available node names
+            for value, metadata in etcd.get_prefix(nodes_prefix):
+                node_name = metadata.key.decode().split('/')[-1]  # Extract node name from the key
+                available_nodes.append(node_name)
+            if available_nodes:
+                break
+        except Exception as e:
+            print(f"Error fetching nodes from etcd: {e}")
+    
+    return available_nodes
+
 def update_pod(key, pod):
     """
-    Update a Pod in etcd as JSON.
+    Update a Pod in etcd as Protobuf encoded yaml.
     """
-    serialized_pod = json.dumps(pod).encode("utf-8")
-    etcd.put(key, serialized_pod)
+    etcd.put(key, auger_encode(pod))
 
 if __name__ == "__main__":
     # Running the Flask app on port 8081
