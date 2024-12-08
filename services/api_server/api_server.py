@@ -6,10 +6,21 @@ import json
 import yaml
 import traceback
 import subprocess
+import requests
+import uuid
+from datetime import datetime
 
 # Initialize Flask App
 app = Flask(__name__)
 
+# Constant
+SCHEDULER_URL = "http://knative-scheduler.default.127.0.0.1.sslip.io"
+
+# etcd Configuration
+ETCD_HOST = "172.18.0.2"
+ETCD_PORT = 2379
+
+# Path to certificates
 dirname = os.path.dirname(__file__)
 ca_cert = os.path.join(dirname, 'certs/ca.crt')
 cert_cert = os.path.join(dirname, 'certs/client.crt')
@@ -17,8 +28,8 @@ cert_key = os.path.join(dirname, 'certs/client.key')
 
 # Initialize etcd3 Client
 etcd = etcd3.client(
-    host="172.18.0.2",
-    port=2379,
+    host=ETCD_HOST,
+    port=ETCD_PORT,
     ca_cert=ca_cert,
     cert_cert=cert_cert,
     cert_key=cert_key
@@ -40,8 +51,23 @@ def create_resource(resource):
         namespace = data.get("metadata", {}).get("namespace", "default")
         etcd_key = f"/registry/{resource}/{namespace}/{resource_name}"
 
+        # Step 1: Store Pod in etcd
         etcd.put(etcd_key, json.dumps(data))
-        return jsonify({"message": f"{resource.capitalize()} '{resource_name}' created successfully"}), 201
+
+        # Step 2: Trigger the Scheduler to assign a node to the Pod
+        scheduling_response = trigger_scheduler(etcd_key)
+        
+        if scheduling_response.get("status") == "success":
+            return jsonify({
+                "message": f"{resource.capitalize()} '{resource_name}' created and scheduled successfully",
+                "assigned_node": scheduling_response["assigned_node"]
+            }), 201
+        else:
+            return jsonify({
+                "error": "Failed to schedule resource",
+                "details": scheduling_response
+            }), 500
+
     except Exception as error:
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500  
@@ -73,7 +99,7 @@ def get_resource_status(name):
         value, _ = etcd.get(etcd_key)
 
         if value:
-            pod_data = yaml.safe_load(auger_decode(value))
+            pod_data = detect_and_parse(value)
 
             # Extract pod data
             pod_name = pod_data["metadata"]["name"]
@@ -154,6 +180,39 @@ def delete_resource(resource, name):
     except Exception as error:
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500
+
+def trigger_scheduler(pod_key):
+    """
+    Trigger the Scheduler Knative Service to assign the Pod to a node.
+    """
+    try:
+        response = requests.post(f"{SCHEDULER_URL}/schedule", json={"pod_key": pod_key})
+        if response.status_code == 200:
+            return {"status": "success", "assigned_node": response.json()["assigned_node"]}
+        else:
+            return {"status": "failure", "error": "Failed to schedule Pod"}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+def detect_and_parse(value):
+    """
+    Detect and parse the format of the data (Protobuf, JSON).
+    Returns a Python dictionary or None if parsing fails.
+    """
+    try:
+        # Try parsing as JSON
+        return json.loads(value.decode("utf-8"))
+    except Exception:
+        pass
+    
+    try:
+        # Try parsing as Protobuf
+        return yaml.safe_load(auger_decode(value))
+    except Exception:
+        traceback.print_exc()
+        pass
+
+    return None
 
 def auger_decode(data):
     try:

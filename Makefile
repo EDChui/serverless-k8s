@@ -3,17 +3,32 @@ PROJECT=serverless-k8s
 
 build-push:
 	@for name in $(shell ls services) ; do \
-		cd ./services/$$name && docker build -t ${NAMESPACE}/serverless-k8s:latest . && docker push ${NAMESPACE}/serverless-k8s:latest && cd ../..; \
+		cd ./services/$$name && \
+		docker build -t ${NAMESPACE}/serverless-k8s:latest . && \
+		docker push ${NAMESPACE}/serverless-k8s:latest \
+		&& cd ../..; \
 	done
 
 build-deploy-api-server:
-	@cd ./services/api_server && docker build -t ${NAMESPACE}/serverless-k8s-api-server:latest . && docker push ${NAMESPACE}/serverless-k8s-api-server:latest && kubectl delete ksvc api-server && kubectl apply -f api_server.yaml;
+	@cd ./services/api_server && \
+	docker build -t ${NAMESPACE}/serverless-k8s-api-server:latest . && \
+	docker push ${NAMESPACE}/serverless-k8s-api-server:latest && \
+	kubectl delete ksvc api-server && \
+	kubectl apply -f api_server.yaml;
 
 build-deploy-scheduler:
-	@cd ./services/scheduler && docker build -t ${NAMESPACE}/serverless-k8s-scheduler:latest . && docker push ${NAMESPACE}/serverless-k8s-scheduler:latest && kubectl delete ksvc knative-scheduler && kubectl apply -f scheduler.yaml;
+	@cd ./services/scheduler && \
+	docker build -t ${NAMESPACE}/serverless-k8s-scheduler:latest . && \
+	docker push ${NAMESPACE}/serverless-k8s-scheduler:latest && \
+	kubectl delete ksvc knative-scheduler && \
+	kubectl apply -f scheduler.yaml;
 
 build-deploy-controller:
-	@cd ./services/controller && docker build -t ${NAMESPACE}/serverless-k8s-controller:latest . && docker push ${NAMESPACE}/serverless-k8s-controller:latest && kubectl delete ksvc knative-controller && kubectl apply -f controller.yaml;
+	@cd ./services/controller && \
+	docker build -t ${NAMESPACE}/serverless-k8s-controller:latest . && \
+	docker push ${NAMESPACE}/serverless-k8s-controller:latest && \
+	kubectl delete ksvc knative-controller && \
+	kubectl apply -f controller.yaml;
 
 install-knative-dependencies:
 	@kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-crds.yaml;
