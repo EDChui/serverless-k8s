@@ -6,6 +6,6 @@ spec:
   template:
     spec:
       containers:
-      - image: raptorchoinl/serverless-k8s-scheduler:latest
+      - image: {{namespace}}/serverless-k8s-scheduler:latest
         ports:
           - containerPort: 8081

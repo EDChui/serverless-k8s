@@ -1,5 +1,6 @@
-NAMESPACE=raptorchoinl
+NAMESPACE={{namespace}}
 PROJECT=serverless-k8s
+CERTS_DIR=certs
 
 build-push:
 	@for name in $(shell ls services) ; do \
@@ -20,10 +21,25 @@ install-knative-dependencies:
 	@kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-core.yaml;
 	@kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-v1.16.0/kourier.yaml;
 	@kubectl patch configmap/config-network \
-  --namespace knative-serving \
-  --type merge \
-  --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}';
+		--namespace knative-serving \
+		--type merge \
+		--patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}';
 	@kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-default-domain.yaml;
+
+get-etcd-certs:
+	@mkdir -p $(CERTS_DIR);
+	@docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt $(CERTS_DIR)/ca.crt;
+	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt $(CERTS_DIR)/client.crt;
+	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key $(CERTS_DIR)/client.key;
+	@for name in $(shell ls services) ; do \
+		cp -r $(CERTS_DIR) ./services/$$name/certs; \
+	done
+	@rm -r $(CERTS_DIR)
+
+update-namespace:
+@for name in $(shell ls services) ; do \
+		@perl -pi -e 's/{{namespace}}/$(NAMESPACE)/g' ./services/$$name/$$name.yaml; \
+	done
 
 # kubectl get ksvc api-server  --output=custom-columns=NAME:.metadata.name,DOMAIN:.status.domain
 
