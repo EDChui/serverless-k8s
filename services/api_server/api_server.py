@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify
 import etcd3
 import os
+from datetime import datetime
 import json
+import yaml
 import traceback
 import subprocess
 
@@ -56,6 +58,65 @@ def get_resource(resource, name):
             return jsonify({"data": auger_decode(value)}), 200
         else:
             return jsonify({"error": f"{resource.capitalize()} '{name}' not found"}), 404
+        
+    except Exception as error:
+        traceback.print_exc()
+        return jsonify({"error": "Internal System Error"}), 500
+
+@app.route('/api/v1/pods/<name>/status', methods=['GET'])
+def get_resource_status(name):
+    """Retrieve the pod status from etcd. This simulate the `kubectl get pods` command."""
+    try:
+        namespace = request.args.get("namespace", "default")
+        etcd_key = f"/registry/pods/{namespace}/{name}"
+
+        value, _ = etcd.get(etcd_key)
+
+        if value:
+            pod_data = yaml.safe_load(auger_decode(value))
+
+            # Extract pod data
+            pod_name = pod_data["metadata"]["name"]
+            pod_phase = pod_data["status"]["phase"]
+            container_statuses = pod_data["status"]["containerStatuses"]
+            creation_timestamp = pod_data["metadata"]["creationTimestamp"]
+            deletion_timestamp = pod_data["metadata"].get("deletionTimestamp")
+
+            # Determine the number of ready containers
+            ready_containers = [container for container in container_statuses if container["ready"]]
+            total_container_count = len(container_statuses)
+            ready_container_count = len(ready_containers)
+
+            # Determine the pod status
+            if deletion_timestamp:
+                pod_status = "Terminating"
+            elif pod_phase == "Running":
+                pod_status = "Running"
+            else:
+                pod_status = "Unknown"
+
+            # Calculate restarts
+            restart_count = sum(container["restartCount"] for container in container_statuses)
+
+            # Calculate the age of the pod by comparing current time
+            current_time = datetime.now()
+            creation_time = datetime.strptime(creation_timestamp, "%Y-%m-%dT%H:%M:%SZ")
+            age = current_time - creation_time
+            age_minutes = int(age.total_seconds() // 60)
+            age_seconds = int(age.total_seconds() % 60)
+
+            status = {
+                "pod_name": pod_name,
+                "ready_container_count": ready_container_count,
+                "total_container_count": total_container_count,
+                "pod_status": pod_status,
+                "restart_count": restart_count,
+                "age": f"{age_minutes}m{age_seconds}s"
+            }
+            
+            return jsonify({"data": status}), 200
+        else:
+            return jsonify({"error": f"pod '{name}' not found"}), 404
         
     except Exception as error:
         traceback.print_exc()
