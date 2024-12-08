@@ -37,8 +37,8 @@ get-etcd-certs:
 	@rm -r $(CERTS_DIR)
 
 update-namespace:
-@for name in $(shell ls services) ; do \
-		@perl -pi -e 's/{{namespace}}/$(NAMESPACE)/g' ./services/$$name/$$name.yaml; \
+	@for name in $(shell ls services) ; do \
+		perl -pi -e 's/{{namespace}}/$(NAMESPACE)/g' ./services/$$name/$$name.yaml; \
 	done
 
 # kubectl get ksvc api-server  --output=custom-columns=NAME:.metadata.name,DOMAIN:.status.domain
