@@ -32,15 +32,24 @@ def health_check():
 def create_resource(resource):
     """Create a resource in etcd."""
     try:
-        data = request.json
+        if "file" not in request.files:
+            return jsonify({"error": "No file part in the request"}), 400
+        
+        file = request.files["file"]
+        
+        if file.filename == "":
+            return jsonify({"error": "No selected file"}), 400
+        elif not file.filename.endswith(".yaml"):
+            return jsonify({"error": "Expect YAML file"}), 400
+
+        data = yaml.safe_load(file.stream)
+        namespace = data.get("metadata", {}).get("namespace", "default")
         resource_name = data.get("metadata", {}).get("name", "")
         if not resource_name:
             return jsonify({"error": "Resource name is required"}), 400
 
-        namespace = data.get("metadata", {}).get("namespace", "default")
         etcd_key = f"/registry/{resource}/{namespace}/{resource_name}"
-
-        etcd.put(etcd_key, json.dumps(data))
+        etcd.put(etcd_key, auger_encode(yaml.safe_dump(data).encode()))
         return jsonify({"message": f"{resource.capitalize()} '{resource_name}' created successfully"}), 201
     except Exception as error:
         traceback.print_exc()
@@ -155,7 +164,22 @@ def delete_resource(resource, name):
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500
 
-def auger_decode(data):
+def auger_encode(data: bytes) -> bytes:
+    try:
+        # Run the Auger subprocess, simulating the CLI behavior
+        process = subprocess.run(
+            ["./auger/build/auger", "encode"],
+            input=data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+        return process.stdout
+    except subprocess.CalledProcessError as e:
+        print("Auger error:", e.stderr.decode('utf-8'))
+        return None
+
+def auger_decode(data: bytes) -> str:
     try:
         # Run the Auger subprocess, simulating the CLI behavior
         process = subprocess.run(

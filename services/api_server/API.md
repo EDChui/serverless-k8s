@@ -8,21 +8,8 @@ Create a resource in etcd.
 
 Request: `POST /api/v1/pods`
 
-```json
-{
-  "metadata": {
-    "name": "mypod",
-    "namespace": "default"
-  },
-  "spec": {
-    "containers": [
-      {
-        "image": "nginx"
-      }
-    ]
-  }
-}
-```
+form-data:
+`key: file, value: xxx.yaml`
 
 Response: `201 Created`
 
