@@ -3,6 +3,7 @@ import etcd3
 import os
 import json
 import traceback
+import subprocess
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -52,7 +53,7 @@ def get_resource(resource, name):
 
         value, _ = etcd.get(etcd_key)
         if value:
-            return jsonify({"data": value.decode()}), 200
+            return jsonify({"data": auger_decode(value)}), 200
         else:
             return jsonify({"error": f"{resource.capitalize()} '{name}' not found"}), 404
         
@@ -92,6 +93,21 @@ def delete_resource(resource, name):
     except Exception as error:
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500
+
+def auger_decode(data):
+    try:
+        # Run the Auger subprocess, simulating the CLI behavior
+        process = subprocess.run(
+            ["./auger/build/auger", "decode"],
+            input=data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+        return process.stdout.decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print("Auger error:", e.stderr.decode('utf-8'))
+        return None
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
