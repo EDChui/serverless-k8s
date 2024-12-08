@@ -85,14 +85,14 @@ def get_resource_status(name):
             pod_data = yaml.safe_load(auger_decode(value))
 
             # Extract pod data
-            pod_name = pod_data["metadata"]["name"]
-            pod_phase = pod_data["status"]["phase"]
-            container_statuses = pod_data["status"]["containerStatuses"]
-            creation_timestamp = pod_data["metadata"]["creationTimestamp"]
+            pod_name = pod_data.get("metadata", {}).get("name", "")
+            pod_phase = pod_data.get("status", {}).get("phase", "")
+            container_statuses = pod_data.get("status", {}).get("containerStatuses", [])
+            creation_timestamp = pod_data.get("metadata", {}).get("creationTimestamp")
             deletion_timestamp = pod_data["metadata"].get("deletionTimestamp")
 
             # Determine the number of ready containers
-            ready_containers = [container for container in container_statuses if container["ready"]]
+            ready_containers = [container for container in container_statuses if container.get("ready", False)]
             total_container_count = len(container_statuses)
             ready_container_count = len(ready_containers)
 
@@ -105,14 +105,18 @@ def get_resource_status(name):
                 pod_status = "Unknown"
 
             # Calculate restarts
-            restart_count = sum(container["restartCount"] for container in container_statuses)
+            restart_count = sum(container.get("restartCount", 0) for container in container_statuses)
 
             # Calculate the age of the pod by comparing current time
-            current_time = datetime.now()
-            creation_time = datetime.strptime(creation_timestamp, "%Y-%m-%dT%H:%M:%SZ")
-            age = current_time - creation_time
-            age_minutes = int(age.total_seconds() // 60)
-            age_seconds = int(age.total_seconds() % 60)
+            if creation_timestamp:
+                current_time = datetime.now()
+                creation_time = datetime.strptime(creation_timestamp, "%Y-%m-%dT%H:%M:%SZ")
+                age = current_time - creation_time
+                age_minutes = int(age.total_seconds() // 60)
+                age_seconds = int(age.total_seconds() % 60)
+            else:
+                age_minutes = 0
+                age_seconds = 0
 
             status = {
                 "pod_name": pod_name,
