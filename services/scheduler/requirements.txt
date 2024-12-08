@@ -1,6 +1,6 @@
-flask
+flask==2.1.1
 etcd3
 protobuf == 3.19.0
 chardet
 pyyaml
-kubernetes
+Werkzeug==2.2.2

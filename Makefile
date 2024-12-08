@@ -12,6 +12,9 @@ build-deploy-api-server:
 build-deploy-scheduler:
 	@cd ./services/scheduler && docker build -t ${NAMESPACE}/serverless-k8s-scheduler:latest . && docker push ${NAMESPACE}/serverless-k8s-scheduler:latest && kubectl delete ksvc knative-scheduler && kubectl apply -f scheduler.yaml;
 
+build-deploy-controller:
+	@cd ./services/controller && docker build -t ${NAMESPACE}/serverless-k8s-controller:latest . && docker push ${NAMESPACE}/serverless-k8s-controller:latest && kubectl delete ksvc knative-controller && kubectl apply -f controller.yaml;
+
 # kubectl get ksvc api-server  --output=custom-columns=NAME:.metadata.name,DOMAIN:.status.domain
 
 # Deploy

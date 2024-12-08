@@ -1,15 +1,15 @@
-from flask import Flask, jsonify
-from google.protobuf.json_format import MessageToDict, ParseDict
-from google.protobuf.message import DecodeError
+from flask import Flask, jsonify, request
 import etcd3
+import json
 import os
 import traceback
-import json
+import subprocess
 import yaml
 
 # Initialize Flask App
 app = Flask(__name__)
 
+# Path to certificates (assumes they're present in 'certs' directory)
 dirname = os.path.dirname(__file__)
 ca_cert = os.path.join(dirname, 'certs/ca.crt')
 cert_cert = os.path.join(dirname, 'certs/client.crt')
@@ -28,29 +28,33 @@ etcd = etcd3.client(
 available_nodes = ["node1", "node2", "node3"]
 current_node_index = 0
 
-def parse_protobuf(value):
-    """
-    Parse Protobuf data and convert to dictionary.
-    """
+
+def auger_decode(data):
+    """Simulates decoding Protobuf using Auger."""
     try:
-        # Dynamically decode the Protobuf (replace with your Pod Protobuf class)
-        from kubernetes.generated import Pod
-        pod = Pod()
-        pod.ParseFromString(value)
-        return MessageToDict(pod)
-    except DecodeError:
-        print("Error decoding Protobuf data.")
+        process = subprocess.run(
+            ["./auger/build/auger", "decode"],
+            input=data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+        return process.stdout.decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print("Auger error:", e.stderr.decode('utf-8'))
         return None
+
 
 def detect_and_parse(value):
     """
-    Detect and parse the format of the data (JSON, YAML).
+    Detect and parse the format of the data (Protobuf, JSON).
     Returns a Python dictionary or None if parsing fails.
     """
     try:
         # Try parsing as Protobuf
-        return parse_protobuf(value)
+        return yaml.safe_load(auger_decode(value))
     except Exception:
+        traceback.print_exc()
         pass
 
     try:
@@ -59,18 +63,18 @@ def detect_and_parse(value):
     except Exception:
         pass
 
-    # Return None if parsing fails
     return None
 
 
 def fetch_pod(key):
     """
     Fetch and parse a Pod from etcd.
-    Handles JSON and YAML formats.
+    Handles Protobuf, JSON formats.
     """
     value, metadata = etcd.get(key)
     if value:
         pod_dict = detect_and_parse(value)
+        print(pod_dict)
         if pod_dict:
             return pod_dict
         else:
@@ -86,60 +90,62 @@ def update_pod(key, pod):
     etcd.put(key, serialized_pod)
 
 
-def get_pending_pods():
-    """
-    Retrieve all Pods in the Pending state (no nodeName).
-    """
-    prefix = "/registry/pods/"
-    pending_pods = []
-
-    for value, metadata in etcd.get_prefix(prefix):
-        pod_key = metadata.key.decode()
-        pod_dict = fetch_pod(pod_key)
-        if pod_dict and not pod_dict.get("spec", {}).get("nodeName"):
-            pending_pods.append((pod_key, pod_dict))
-
-    return pending_pods
-
-
 def assign_node_to_pod(pod_key, pod):
     """
-    Assign a node to a pending Pod and update it in etcd.
+    Assign a node to a specific Pod (by pod_key) and update it in etcd.
     """
     global current_node_index
     node_name = available_nodes[current_node_index]
 
-    # Round-robin scheduling
+    # Round-robin scheduling (simple, could be expanded based on actual resource availability)
     current_node_index = (current_node_index + 1) % len(available_nodes)
 
-    # Update the Pod spec with the assigned node
+    # Update the Pod's nodeName field
     pod["spec"]["nodeName"] = node_name
     update_pod(pod_key, pod)
 
     return node_name
 
+
 @app.route('/', methods=['GET'])
 def health_check():
+    """
+    Health check endpoint for the scheduler service.
+    """
     return jsonify({"status": "Scheduler is running"}), 200
 
+
 @app.route('/schedule', methods=['POST'])
-def schedule_pods():
+def schedule_pod():
+    """
+    Endpoint to trigger Pod scheduling. This endpoint receives a pod_key and schedules the pod on an available node.
+    """
     try:
-        """Endpoint to trigger Pod scheduling."""
-        pending_pods = get_pending_pods()
-        if not pending_pods:
-            return jsonify({"message": "No pending pods to schedule"}), 200
+        # Get the pod_key from the request payload
+        pod_key = request.json.get("pod_key")
+        if not pod_key:
+            return jsonify({"error": "pod_key is required"}), 400
 
-        results = []
-        for pod_key, pod_dict in pending_pods:
-            node_name = assign_node_to_pod(pod_key, pod_dict)
-            results.append({"pod_key": pod_key, "assigned_node": node_name})
+        # Fetch the pod from etcd using the pod_key
+        pod_dict = fetch_pod(pod_key)
+        if not pod_dict:
+            return jsonify({"error": f"Pod with key {pod_key} not found"}), 404
 
-        return jsonify({"message": "Pods scheduled", "results": results}), 200
+        # Assign a node to the Pod
+        node_name = assign_node_to_pod(pod_key, pod_dict)
+
+        # Return the scheduling result
+        return jsonify({
+            "message": f"Pod {pod_key} scheduled to {node_name}",
+            "pod_key": pod_key,
+            "assigned_node": node_name
+        }), 200
 
     except Exception as error:
         traceback.print_exc()
-        return jsonify({"error": "Internal System Error"}), 500
+        return jsonify({"error": "Internal system error during scheduling"}), 500
+
 
 if __name__ == "__main__":
+    # Running the Flask app on port 8081
     app.run(host="0.0.0.0", port=8081)
