@@ -31,8 +31,8 @@ get-etcd-certs:
 	@docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt $(CERTS_DIR)/ca.crt;
 	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt $(CERTS_DIR)/client.crt;
 	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key $(CERTS_DIR)/client.key;
-	@for name in $(shell ls services) ; do \
-		cp -r $(CERTS_DIR) ./services/$$name/certs; \
+	@for name in "api_server" "scheduler" ; do \
+		cp -r $(CERTS_DIR) ./services/$$name; \
 	done
 	@rm -r $(CERTS_DIR)
 
