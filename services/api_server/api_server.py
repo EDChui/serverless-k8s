@@ -45,7 +45,6 @@ def health_check():
             return {"status": "Scheduler is not running"}, 200
     except Exception as e:
         return {"status": "failure", "error": str(e)}
-    return jsonify({"status": "API is running"}), 200
 
 @app.route('/api/v1/<resource>', methods=['POST'])
 def create_resource(resource):
@@ -69,10 +68,8 @@ def create_resource(resource):
 
         etcd_key = f"/registry/{resource}/{namespace}/{resource_name}"
 
-        # Step 1: Generate a UUID for the resource
+        # Step 1: Generate a UUID and add it to the metadata of the resource
         resource_uid = create_uid()
-
-        # Add the UUID to the metadata of the resource
         data["metadata"]["uid"] = resource_uid
 
         # Step 2: Encode the resource and store it in etcd
@@ -84,7 +81,8 @@ def create_resource(resource):
         if scheduling_response.get("status") == "success":
             return jsonify({
                 "message": f"{resource.capitalize()} '{resource_name}' created and scheduled successfully",
-                "assigned_node": scheduling_response["assigned_node"]
+                "assigned_node": scheduling_response["assigned_node"],
+                "data": data
             }), 201
         else:
             return jsonify({

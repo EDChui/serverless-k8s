@@ -5,6 +5,7 @@ import os
 import traceback
 import subprocess
 import yaml
+from datetime import datetime
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -154,6 +155,8 @@ def assign_node_to_pod(pod_key, pod):
 
     # Update the Pod's nodeName field
     pod["spec"]["nodeName"] = node_name
+    # Add creationTimestamp to the metadata of the resource
+    pod["metadata"]["creationTimestamp"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
     update_pod(pod_key, pod)
 
     return node_name
