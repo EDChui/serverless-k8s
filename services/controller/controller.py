@@ -128,7 +128,7 @@ def create_and_schedule_pod(namespace, replicaset):
     """
     Dynamically create a Pod based on the ReplicaSet's spec and assign a node.
     """
-    pod_name = f"{replicaset['metadata']['name']}-pod-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    pod_name = f"{replicaset['metadata']['name']}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
     pod_data = {
         "apiVersion": "v1",
