@@ -74,7 +74,6 @@ def fetch_pod(key):
     value, metadata = etcd.get(key)
     if value:
         pod_dict = detect_and_parse(value)
-        print(pod_dict)
         if pod_dict:
             return pod_dict
         else:
@@ -100,21 +99,6 @@ def detect_and_parse(value):
         pass
 
     return None
-
-def auger_decode(data):
-    """Simulates decoding Protobuf using Auger."""
-    try:
-        process = subprocess.run(
-            ["./auger/build/auger", "decode"],
-            input=data,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True
-        )
-        return process.stdout.decode('utf-8')
-    except subprocess.CalledProcessError as e:
-        print("Auger error:", e.stderr.decode('utf-8'))
-        return None
     
 def auger_encode(data_dict):
     """
@@ -185,6 +169,45 @@ def update_pod(key, pod):
     Update a Pod in etcd as Protobuf encoded yaml.
     """
     etcd.put(key, auger_encode(pod))
+    
+def auger_decode(data):
+    """Simulates decoding Protobuf using Auger."""
+    try:
+        process = subprocess.run(
+            ["./auger/build/auger", "decode"],
+            input=data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+        return process.stdout.decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print("Auger error:", e.stderr.decode('utf-8'))
+        return None
+    
+def auger_encode(data_dict):
+    """
+    Encode a Python dictionary to Protobuf format using Auger.
+    The dictionary is first converted to YAML, then encoded to Protobuf.
+    """
+    try:
+        # Convert the dictionary to YAML format
+        yaml_data = yaml.dump(data_dict, default_flow_style=False)
+
+        # Use Auger to encode the YAML into Protobuf
+        process = subprocess.run(
+            ["./auger/build/auger", "encode"],
+            input=yaml_data.encode("utf-8"),  # Provide YAML as input
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+
+        # The output of the Auger process is the Protobuf encoded data
+        return process.stdout
+    except subprocess.CalledProcessError as e:
+        print("Auger encoding error:", e.stderr.decode('utf-8'))
+        return None
 
 if __name__ == "__main__":
     # Running the Flask app on port 8081

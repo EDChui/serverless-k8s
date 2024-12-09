@@ -1,2 +1,7 @@
-Flask==2.1.1
-requests==2.26.0
+flask==2.1.1
+etcd3
+protobuf == 3.19.0
+chardet
+pyyaml
+Werkzeug==2.2.2
+requests

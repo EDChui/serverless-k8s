@@ -15,6 +15,7 @@ app = Flask(__name__)
 
 # Constant
 SCHEDULER_URL = "http://knative-scheduler.default.svc.cluster.local"
+CONTROLLER_URL = "http://knative-controller.default.svc.cluster.local"
 
 # etcd Configuration
 ETCD_HOST = "172.18.0.2"
@@ -50,17 +51,19 @@ def health_check():
 def create_resource(resource):
     """Create a resource in etcd."""
     try:
-        if "file" not in request.files:
-            return jsonify({"error": "No file part in the request"}), 400
-        
-        file = request.files["file"]
-        
-        if file.filename == "":
-            return jsonify({"error": "No selected file"}), 400
-        elif not file.filename.endswith(".yaml"):
-            return jsonify({"error": "Expect YAML file"}), 400
+        if "file" in request.files:
+            # return jsonify({"error": "No file part in the request"}), 400
+            file = request.files["file"]
+            
+            if file.filename == "":
+                return jsonify({"error": "No selected file"}), 400
+            elif not file.filename.endswith(".yaml"):
+                return jsonify({"error": "Expect YAML file"}), 400
+            
+            data = yaml.safe_load(file.stream)
+        else:
+            data = request.json
 
-        data = yaml.safe_load(file.stream)
         namespace = data.get("metadata", {}).get("namespace", "default")
         resource_name = data.get("metadata", {}).get("name", "")
         if not resource_name:
@@ -77,6 +80,12 @@ def create_resource(resource):
 
         # Step 3: Trigger the Scheduler to assign a node to the resource
         scheduling_response = trigger_scheduler(etcd_key)
+        
+        try:
+            if resource == "deployments":
+                trigger_controller(resource, resource_name)
+        except Exception:
+            pass
         
         if scheduling_response.get("status") == "success":
             return jsonify({
@@ -237,6 +246,19 @@ def trigger_scheduler(pod_key):
             return {"status": "success", "assigned_node": response.json()["assigned_node"]}
         else:
             return {"status": "failure", "error": "Failed to schedule Pod"}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+    
+def trigger_controller(resource_type, resource_name):
+    """
+    Trigger the Controller Knative Service to for reconcile requests and perform actions.
+    """
+    try:
+        response = requests.post(f"{CONTROLLER_URL}/reconcile", json={ "resource_type": resource_type, "resource_name": resource_name })
+        if response.status_code == 200:
+            return {"status": "success", "message": response.json()["message"]}
+        else:
+            return {"status": "failure", "error": "Failed to reconcile resource"}
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
