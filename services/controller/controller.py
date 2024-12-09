@@ -313,24 +313,5 @@ def trigger_scheduler(pod_key):
     except Exception as e:
         return {"status": "failure", "error": str(e)}
 
-def create_pod_for_replicaset(replicaset_name, namespace):
-    """
-    Create a Pod for the ReplicaSet in etcd (simulated for this example).
-    """
-    pod_name = f"{replicaset_name}-pod-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    pod_data = {
-        "metadata": {
-            "name": pod_name,
-            "namespace": namespace
-        },
-        "spec": {
-            "containers": [{"name": "nginx", "image": "nginx"}]
-        }
-    }
-
-    pod_key = f"/registry/pods/{namespace}/{pod_name}"
-    etcd.put(pod_key, json.dumps(pod_data).encode('utf-8'))
-    return pod_key
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8082)
