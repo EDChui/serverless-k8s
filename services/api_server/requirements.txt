@@ -3,3 +3,4 @@ etcd3
 protobuf == 3.19.0
 pyyaml
 Werkzeug==2.2.2
+requests

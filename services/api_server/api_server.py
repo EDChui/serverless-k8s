@@ -6,10 +6,21 @@ import json
 import yaml
 import traceback
 import subprocess
+import requests
+from datetime import datetime
+import uuid
 
 # Initialize Flask App
 app = Flask(__name__)
 
+# Constant
+SCHEDULER_URL = "http://knative-scheduler.default.svc.cluster.local"
+
+# etcd Configuration
+ETCD_HOST = "172.18.0.2"
+ETCD_PORT = 2379
+
+# Path to certificates
 dirname = os.path.dirname(__file__)
 ca_cert = os.path.join(dirname, 'certs/ca.crt')
 cert_cert = os.path.join(dirname, 'certs/client.crt')
@@ -17,8 +28,8 @@ cert_key = os.path.join(dirname, 'certs/client.key')
 
 # Initialize etcd3 Client
 etcd = etcd3.client(
-    host="172.18.0.2",
-    port=2379,
+    host=ETCD_HOST,
+    port=ETCD_PORT,
     ca_cert=ca_cert,
     cert_cert=cert_cert,
     cert_key=cert_key
@@ -26,22 +37,59 @@ etcd = etcd3.client(
 
 @app.route('/', methods=['GET'])
 def health_check():
-    return jsonify({"status": "API is running"}), 200
+    try:
+        response = requests.get(SCHEDULER_URL)
+        if response.status_code == 200:
+            return jsonify({"status": "API is running"}), 200
+        else:
+            return {"status": "Scheduler is not running"}, 200
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
 
 @app.route('/api/v1/<resource>', methods=['POST'])
 def create_resource(resource):
     """Create a resource in etcd."""
     try:
-        data = request.json
+        if "file" not in request.files:
+            return jsonify({"error": "No file part in the request"}), 400
+        
+        file = request.files["file"]
+        
+        if file.filename == "":
+            return jsonify({"error": "No selected file"}), 400
+        elif not file.filename.endswith(".yaml"):
+            return jsonify({"error": "Expect YAML file"}), 400
+
+        data = yaml.safe_load(file.stream)
+        namespace = data.get("metadata", {}).get("namespace", "default")
         resource_name = data.get("metadata", {}).get("name", "")
         if not resource_name:
             return jsonify({"error": "Resource name is required"}), 400
 
-        namespace = data.get("metadata", {}).get("namespace", "default")
         etcd_key = f"/registry/{resource}/{namespace}/{resource_name}"
 
-        etcd.put(etcd_key, json.dumps(data))
-        return jsonify({"message": f"{resource.capitalize()} '{resource_name}' created successfully"}), 201
+        # Step 1: Generate a UUID and add it to the metadata of the resource
+        resource_uid = create_uid()
+        data["metadata"]["uid"] = resource_uid
+
+        # Step 2: Encode the resource and store it in etcd
+        etcd.put(etcd_key, auger_encode(data))
+
+        # Step 3: Trigger the Scheduler to assign a node to the resource
+        scheduling_response = trigger_scheduler(etcd_key)
+        
+        if scheduling_response.get("status") == "success":
+            return jsonify({
+                "message": f"{resource.capitalize()} '{resource_name}' created and scheduled successfully",
+                "assigned_node": scheduling_response["assigned_node"],
+                "data": data
+            }), 201
+        else:
+            return jsonify({
+                "error": "Failed to schedule resource",
+                "details": scheduling_response
+            }), 500
+
     except Exception as error:
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500  
@@ -73,17 +121,17 @@ def get_resource_status(name):
         value, _ = etcd.get(etcd_key)
 
         if value:
-            pod_data = yaml.safe_load(auger_decode(value))
+            pod_data = detect_and_parse(value)
 
             # Extract pod data
-            pod_name = pod_data["metadata"]["name"]
-            pod_phase = pod_data["status"]["phase"]
-            container_statuses = pod_data["status"]["containerStatuses"]
-            creation_timestamp = pod_data["metadata"]["creationTimestamp"]
+            pod_name = pod_data.get("metadata", {}).get("name", "")
+            pod_phase = pod_data.get("status", {}).get("phase", "")
+            container_statuses = pod_data.get("status", {}).get("containerStatuses", [])
+            creation_timestamp = pod_data.get("metadata", {}).get("creationTimestamp")
             deletion_timestamp = pod_data["metadata"].get("deletionTimestamp")
 
             # Determine the number of ready containers
-            ready_containers = [container for container in container_statuses if container["ready"]]
+            ready_containers = [container for container in container_statuses if container.get("ready", False)]
             total_container_count = len(container_statuses)
             ready_container_count = len(ready_containers)
 
@@ -96,14 +144,18 @@ def get_resource_status(name):
                 pod_status = "Unknown"
 
             # Calculate restarts
-            restart_count = sum(container["restartCount"] for container in container_statuses)
+            restart_count = sum(container.get("restartCount", 0) for container in container_statuses)
 
             # Calculate the age of the pod by comparing current time
-            current_time = datetime.now()
-            creation_time = datetime.strptime(creation_timestamp, "%Y-%m-%dT%H:%M:%SZ")
-            age = current_time - creation_time
-            age_minutes = int(age.total_seconds() // 60)
-            age_seconds = int(age.total_seconds() % 60)
+            if creation_timestamp:
+                current_time = datetime.now()
+                creation_time = datetime.strptime(creation_timestamp, "%Y-%m-%dT%H:%M:%SZ")
+                age = current_time - creation_time
+                age_minutes = int(age.total_seconds() // 60)
+                age_seconds = int(age.total_seconds() % 60)
+            else:
+                age_minutes = 0
+                age_seconds = 0
 
             status = {
                 "pod_name": pod_name,
@@ -118,6 +170,22 @@ def get_resource_status(name):
         else:
             return jsonify({"error": f"pod '{name}' not found"}), 404
         
+    except Exception as error:
+        traceback.print_exc()
+        return jsonify({"error": "Internal System Error"}), 500
+
+@app.route('/api/v1/all', methods=['GET'])
+def list_all_resources():
+    """List all keys in the etcd."""
+    try:
+        prefix = f"/registry/"
+
+        resources = []
+        for value, metadata in etcd.get_prefix(prefix):
+            resources.append(metadata.key.decode())
+
+        return jsonify({"data": resources}), 200
+    
     except Exception as error:
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500
@@ -155,7 +223,44 @@ def delete_resource(resource, name):
         traceback.print_exc()
         return jsonify({"error": "Internal System Error"}), 500
 
-def auger_decode(data):
+def create_uid():
+    """Generate a unique UID for a resource."""
+    return str(uuid.uuid4())
+
+def trigger_scheduler(pod_key):
+    """
+    Trigger the Scheduler Knative Service to assign the Pod to a node.
+    """
+    try:
+        response = requests.post(f"{SCHEDULER_URL}/schedule", json={"pod_key": pod_key})
+        if response.status_code == 200:
+            return {"status": "success", "assigned_node": response.json()["assigned_node"]}
+        else:
+            return {"status": "failure", "error": "Failed to schedule Pod"}
+    except Exception as e:
+        return {"status": "failure", "error": str(e)}
+
+def detect_and_parse(value):
+    """
+    Detect and parse the format of the data (Protobuf, JSON).
+    Returns a Python dictionary or None if parsing fails.
+    """
+    try:
+        # Try parsing as JSON
+        return json.loads(value.decode("utf-8"))
+    except Exception:
+        pass
+    
+    try:
+        # Try parsing as Protobuf
+        return yaml.safe_load(auger_decode(value))
+    except Exception:
+        traceback.print_exc()
+        pass
+
+    return None
+
+def auger_decode(data: bytes) -> str:
     try:
         # Run the Auger subprocess, simulating the CLI behavior
         process = subprocess.run(
@@ -168,6 +273,30 @@ def auger_decode(data):
         return process.stdout.decode('utf-8')
     except subprocess.CalledProcessError as e:
         print("Auger error:", e.stderr.decode('utf-8'))
+        return None
+
+def auger_encode(data_dict: dict) -> bytes:
+    """
+    Encode a Python dictionary to Protobuf format using Auger.
+    The dictionary is first converted to YAML, then encoded to Protobuf.
+    """
+    try:
+        # Convert the dictionary to YAML format
+        yaml_data = yaml.dump(data_dict, default_flow_style=False).encode("utf-8")
+
+        # Use Auger to encode the YAML into Protobuf
+        process = subprocess.run(
+            ["./auger/build/auger", "encode"],
+            input=yaml_data,  # Provide YAML as input
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+
+        # The output of the Auger process is the Protobuf encoded data
+        return process.stdout
+    except subprocess.CalledProcessError as e:
+        print("Auger encoding error:", e.stderr.decode('utf-8'))
         return None
 
 if __name__ == '__main__':
