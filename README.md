@@ -14,8 +14,8 @@ Course work for Vrije Universiteit Amsterdam's X_400130 Distributed Systems (202
 
 # Setup
 
-1. Update the variable `NAMESPACE={{namespace}}` in `Makefile` to your Docker namespace.
-2. Run the following command to update all namespaces.
+1. Update the variable `NAMESPACE=YOUR_NAMESPACE_HERE` in `Makefile` to your Docker namespace.
+2. Run the following command to update all namespaces in the services yaml.
 
 ```sh
 make update-namespace
@@ -27,6 +27,33 @@ make update-namespace
 make get-etcd-certs
 ```
 
+4. Build and deploy the services.
+
+```sh
+make build-deploy-all
+```
+
+5. Find the URL for accessing the services.
+
+```sh
+kubectl get ksvc
+```
+
+6. Take down the services.
+
+```sh
+make take-down-all
+```
+
+# Useful Commands
+
+## Checking etcd configuration
+
+```sh
+docker exec -it knative-control-plane sh
+cat /etc/kubernetes/manifests/etcd.yaml
+```
+
 # Acknowledgments
 
-This project makes use of Auger maintained by the etcd Development and Communities. Please check out their work [here (etcd-io/auger)](https://github.com/etcd-io/auger).
+This project makes use of Auger maintained by the etcd Development and Communities. Please check out their work [etcd-io/auger](https://github.com/etcd-io/auger).

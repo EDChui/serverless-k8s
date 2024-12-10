@@ -1,35 +1,8 @@
-NAMESPACE={{namespace}}
+NAMESPACE=YOUR_NAMESPACE_HERE
 PROJECT=serverless-k8s
-CERTS_DIR=certs
 
-build-push:
-	@for name in $(shell ls services) ; do \
-		cd ./services/$$name && \
-		docker build -t ${NAMESPACE}/serverless-k8s:latest . && \
-		docker push ${NAMESPACE}/serverless-k8s:latest \
-		&& cd ../..; \
-	done
-
-build-deploy-api-server:
-	@cd ./services/api_server && \
-	docker build -t ${NAMESPACE}/serverless-k8s-api-server:latest . && \
-	docker push ${NAMESPACE}/serverless-k8s-api-server:latest && \
-	kubectl delete ksvc api-server && \
-	kubectl apply -f api_server.yaml;
-
-build-deploy-scheduler:
-	@cd ./services/scheduler && \
-	docker build -t ${NAMESPACE}/serverless-k8s-scheduler:latest . && \
-	docker push ${NAMESPACE}/serverless-k8s-scheduler:latest && \
-	kubectl delete ksvc knative-scheduler && \
-	kubectl apply -f scheduler.yaml;
-
-build-deploy-controller:
-	@cd ./services/controller && \
-	docker build -t ${NAMESPACE}/serverless-k8s-controller:latest . && \
-	docker push ${NAMESPACE}/serverless-k8s-controller:latest && \
-	kubectl delete ksvc knative-controller && \
-	kubectl apply -f controller.yaml;
+# Setup commands
+TEMP_CERTS_DIR=certs
 
 install-knative-dependencies:
 	@kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-crds.yaml;
@@ -41,52 +14,56 @@ install-knative-dependencies:
 		--patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}';
 	@kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-default-domain.yaml;
 
-get-etcd-certs:
-	@mkdir -p $(CERTS_DIR);
-	@docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt $(CERTS_DIR)/ca.crt;
-	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt $(CERTS_DIR)/client.crt;
-	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key $(CERTS_DIR)/client.key;
-	@for name in "api_server" "scheduler" ; do \
-		cp -r $(CERTS_DIR) ./services/$$name; \
-	done
-	@rm -r $(CERTS_DIR)
-
 update-namespace:
 	@for name in $(shell ls services) ; do \
 		perl -pi -e 's/{{namespace}}/$(NAMESPACE)/g' ./services/$$name/$$name.yaml; \
 	done
 
-# kubectl get ksvc api-server  --output=custom-columns=NAME:.metadata.name,DOMAIN:.status.domain
+get-etcd-certs:
+	@mkdir -p $(TEMP_CERTS_DIR);
+	@docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt $(TEMP_CERTS_DIR)/ca.crt;
+	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt $(TEMP_CERTS_DIR)/client.crt;
+	@docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key $(TEMP_CERTS_DIR)/client.key;
+	@for name in $(shell ls services) ; do \
+		cp -r $(TEMP_CERTS_DIR) ./services/$$name; \
+	done
+	@rm -r $(TEMP_CERTS_DIR)
 
-# Deploy
-# kubectl apply -f api_server.yaml
+# Deployment commands
 
-# Get Knative Services
-# kubectl get ksvc
+build-push-all:
+	@for name in $(shell ls services) ; do \
+		cd ./services/$$name && \
+		docker build -t ${NAMESPACE}/serverless-k8s:latest . && \
+		docker push ${NAMESPACE}/serverless-k8s:latest \
+		&& cd ../..; \
+	done
 
-# Delete Knative Services
-# kubectl delete ksvc api-server
+build-deploy-all: build-deploy-api-server build-deploy-scheduler build-deploy-controller
+	@echo "All services built and deployed successfully!"
 
-# Get Pods Logging
-# kubectl get pods
-# kubectl logs <pods-name>
+take-down-all:
+	@(kubectl get ksvc api-server > /dev/null 2>&1 && kubectl delete ksvc api-server || echo "api-server does not exist, skipping delete") && \
+	(kubectl get ksvc knative-scheduler > /dev/null 2>&1 && kubectl delete ksvc knative-scheduler || echo "knative-scheduler does not exist, skipping delete") && \
+	(kubectl get ksvc knative-controller > /dev/null 2>&1 && kubectl delete ksvc knative-controller || echo "knative-controller does not exist, skipping delete");
 
-# Install Knative and Kubernetes using kind, can delete and recreate
-# kn quickstart kind
+build-deploy-api-server:
+	@cd ./services/api_server && \
+	docker build -t ${NAMESPACE}/serverless-k8s-api-server:latest . && \
+	docker push ${NAMESPACE}/serverless-k8s-api-server:latest && \
+	(kubectl get ksvc api-server > /dev/null 2>&1 && kubectl delete ksvc api-server || echo "api-server does not exist, skipping delete") && \
+	kubectl apply -f api_server.yaml;
 
-# Verify Installation
-# kubectl get pods -n knative-serving
+build-deploy-scheduler:
+	@cd ./services/scheduler && \
+	docker build -t ${NAMESPACE}/serverless-k8s-scheduler:latest . && \
+	docker push ${NAMESPACE}/serverless-k8s-scheduler:latest && \
+	(kubectl get ksvc knative-scheduler > /dev/null 2>&1 && kubectl delete ksvc knative-scheduler || echo "knative-scheduler does not exist, skipping delete") && \
+	kubectl apply -f scheduler.yaml;
 
-# sh
-# docker exec -it knative-control-plane sh
-# cat /etc/kubernetes/manifests/etcd.yaml
-
-# Copy
-# docker cp knative-control-plane:/etc/kubernetes/pki/etcd/ca.crt ./Documents/ca.crt
-# docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.crt ./Documents/client.crt
-# docker cp knative-control-plane:/etc/kubernetes/pki/apiserver-etcd-client.key ./Documents/client.key
-
-# ls /etc/kubernetes/pki
-
-# curl -v 172.18.0.2:2379 --cacert /etc/kubernetes/pki/ca.crt --key /etc/kubernetes/pki/apiserver-etcd-client.key --cert /etc/kubernetes/pki/apiserver-etcd-client.crt 
-# curl -v 172.18.0.2:2379 --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key
+build-deploy-controller:
+	@cd ./services/controller && \
+	docker build -t ${NAMESPACE}/serverless-k8s-controller:latest . && \
+	docker push ${NAMESPACE}/serverless-k8s-controller:latest && \
+	(kubectl get ksvc knative-controller > /dev/null 2>&1 && kubectl delete ksvc knative-controller || echo "knative-controller does not exist, skipping delete") && \
+	kubectl apply -f controller.yaml;
