@@ -25,7 +25,7 @@ plt.plot(
     label='Normalized Pod End Time'
 )
 plt.title('Normalized Pod End Time by Sorting Order of Pod End', fontsize=14)
-plt.xlabel('Starting Instance)', fontsize=12)
+plt.xlabel('Starting Instance', fontsize=12)
 plt.ylabel('Normalized Pod End Time (ms)', fontsize=12)
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.legend(fontsize=10)
