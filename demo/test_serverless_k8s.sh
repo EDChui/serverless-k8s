@@ -1,6 +1,6 @@
 #!/bin/bash
 
-run_size=10
+run_size=100
 api_endpoint=http://api-server.default.127.0.0.1.sslip.io/api/v1
 echo "i,start_time,deployment_start,deployment_end,pod_start,pod_end,end_time,total_time,deployment_time,pod_ready_time" | tee -a output.csv
 
@@ -35,6 +35,8 @@ spec:
   # Write YAML data to a temporary file
   temp_file="temp_demo$i.yaml"
   echo "$yaml" > "$temp_file"
+
+  sleep $((i%25))
 
   # Perform the curl call to create the deployment
   curl -X POST ${api_endpoint}/pods \
