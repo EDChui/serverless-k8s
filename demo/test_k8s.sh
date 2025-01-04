@@ -40,7 +40,7 @@ spec:
   curl -X POST \
     -H "Content-Type: application/yaml" \
     -d "${yaml}" \
-    ${api_endpoint}/v1/namespaces/default/pods
+    ${api_endpoint}/namespaces/default/pods
   deployment_end=$(gdate +%s%N)
 
   # Step 3: Wait for the pod to be ready
