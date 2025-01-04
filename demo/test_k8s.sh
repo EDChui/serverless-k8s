@@ -60,15 +60,7 @@ spec:
   pod_ready_time=$((( pod_end - pod_start ) / 1000000 )) # Pod readiness time in ms
 
   # Step 6: Print results
-  echo "$i,start_time,$start_time" | tee -a output.txt
-  echo "$i,deployment_start,$deployment_start" | tee -a output.txt
-  echo "$i,deployment_end,$deployment_end" | tee -a output.txt
-  echo "$i,pod_start,$pod_start" | tee -a output.txt
-  echo "$i,pod_end,$pod_end" | tee -a output.txt
-  echo "$i,end_time,$end_time" | tee -a output.txt
-  echo "$i,total_time,$total_time" | tee -a output.txt
-  echo "$i,deployment_time,$deployment_time" | tee -a output.txt
-  echo "$i,pod_ready_time,$pod_ready_time"
+  echo "$i,$start_time,$deployment_start,$deployment_end,$pod_start,$pod_end,$end_time,$total_time,$deployment_time,$pod_ready_time" | tee -a output.csv
 
   # Step 7: Delete the pod after testing
   kubectl delete pod demo${i}
