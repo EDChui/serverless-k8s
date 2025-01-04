@@ -48,6 +48,12 @@ spec:
   # Step 3: Wait for the pod to be ready
   pod_start=$(gdate +%s%N)
   while true; do
+    if ((($(gdate +%s%N) - pod_start) >= 60000000000)); then
+      echo "Pod demo$i timeout"
+      echo "$i,0,0,0,0,0,0,0,0,0" | tee -a output.csv
+      break
+    fi
+
     pod_status=$(kubectl get pods -l app=demo${i} -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
     if [[ "$pod_status" == "Running" ]]; then
       break
