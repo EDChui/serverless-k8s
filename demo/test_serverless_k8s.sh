@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# Step 0: Start k8s proxy (manually)
-# kubectl proxy --port=8080 &
-
-run_size=50
-api_endpoint=http://localhost:8080/api/v1
+run_size=10
+api_endpoint=http://api-server.default.127.0.0.1.sslip.io/api/v1
 echo "i,start_time,deployment_start,deployment_end,pod_start,pod_end,end_time,total_time,deployment_time,pod_ready_time" | tee -a output.csv
 
 # Function to handle the deployment process for each pod
@@ -35,12 +32,17 @@ spec:
       ports:
         - containerPort: 80
 "
-  
+  # Write YAML data to a temporary file
+  temp_file="temp_demo$i.yaml"
+  echo "$yaml" > "$temp_file"
+
   # Perform the curl call to create the deployment
-  curl -X POST \
-    -H "Content-Type: application/yaml" \
-    -d "${yaml}" \
-    ${api_endpoint}/v1/namespaces/default/pods
+  curl -X POST ${api_endpoint}/pods \
+    -F "file=@$temp_file"
+
+  # Remove the temporary file
+  rm "$temp_file"
+
   deployment_end=$(gdate +%s%N)
 
   # Step 3: Wait for the pod to be ready
