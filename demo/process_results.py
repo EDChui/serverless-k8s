@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Load the CSV file
 dirname = os.path.dirname(__file__)
@@ -27,6 +28,17 @@ plt.plot(
 plt.title('Normalized Pod End Time by Starting Instance', fontsize=14)
 plt.xlabel('Starting Instance', fontsize=12)
 plt.ylabel('Normalized Pod End Time (ms)', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend(fontsize=10)
+plt.tight_layout()
+plt.show()
+
+# Step 4: Plot the distribution of 'pod_ready_time'
+plt.figure(figsize=(10, 6))
+sns.histplot(data_sorted['pod_ready_time'], kde=True, color='g', bins=30, label='Pod Ready Time Distribution')
+plt.title('Distribution of Pod Ready Time', fontsize=14)
+plt.xlabel('Pod Ready Time (ms)', fontsize=12)
+plt.ylabel('Frequency', fontsize=12)
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.legend(fontsize=10)
 plt.tight_layout()
