@@ -1,6 +1,6 @@
 #!/bin/bash
 
-run_size=250
+run_size=500
 api_endpoint=http://api-server.default.127.0.0.1.sslip.io/api/v1
 echo "i,start_time,deployment_start,deployment_end,pod_start,pod_end,end_time,total_time,deployment_time,pod_ready_time" | tee -a output.csv
 
@@ -83,8 +83,8 @@ spec:
 
 # Run the deployment for each pod in parallel
 for i in {1..$run_size}; do
-  if (( i % 25 == 0 )); then
-    sleep 5
+  if (( i % 10 == 0 )); then
+    sleep 10
   fi
   deploy_pod $i &  # Run the deployment in the background
 done
